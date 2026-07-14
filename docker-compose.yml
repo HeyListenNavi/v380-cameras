@@ -4,7 +4,7 @@ services:
     build: .
     restart: unless-stopped
     entrypoint: /bin/sh
-    command: -c "./V380Decoder --id $PATIO_ID --username $PATIO_USER --password $PATIO_PASS --ip $PATIO_IP --enable-api"
+    command: -c "./V380Decoder --id $PATIO_ID --username $PATIO_USER --password $PATIO_PASS --ip $PATIO_IP --enable-api --enable-onvif"
     environment:
       - PATIO_ID=${PATIO_ID}
       - PATIO_USER=${PATIO_USER}
@@ -19,7 +19,7 @@ services:
     build: .
     restart: unless-stopped
     entrypoint: /bin/sh
-    command: -c "./V380Decoder --id $YONKE_ID --username $YONKE_USER --password $YONKE_PASS --ip $YONKE_IP --enable-api"
+    command: -c "./V380Decoder --id $YONKE_ID --username $YONKE_USER --password $YONKE_PASS --ip $YONKE_IP --enable-api --enable-onvif"
     environment:
       - YONKE_ID=${YONKE_ID}
       - YONKE_USER=${YONKE_USER}
@@ -34,7 +34,7 @@ services:
     build: .
     restart: unless-stopped
     entrypoint: /bin/sh
-    command: -c "./V380Decoder --id $FRENTE_ID --username $FRENTE_USER --password $FRENTE_PASS --ip $FRENTE_IP --enable-api"
+    command: -c "./V380Decoder --id $FRENTE_ID --username $FRENTE_USER --password $FRENTE_PASS --ip $FRENTE_IP --enable-api --enable-onvif"
     environment:
       - FRENTE_ID=${FRENTE_ID}
       - FRENTE_USER=${FRENTE_USER}
@@ -43,3 +43,8 @@ services:
     ports:
       - "8556:8554"
       - "8082:8080"
+
+networks:
+  default:
+    external: true
+    name: cameras_cameras_default
