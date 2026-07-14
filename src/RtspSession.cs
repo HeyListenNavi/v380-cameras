@@ -1,5 +1,6 @@
 using System.Net.Sockets;
 using System.Text;
+using System.Collections.Generic;
 
 namespace V380Decoder.src
 {
@@ -17,6 +18,10 @@ namespace V380Decoder.src
 
         // interleaved channels negotiated in SETUP
         private byte videoCh = 0, audioCh = 2;
+        private byte backchannelCh = 255;
+        private readonly byte[] backchannelBuffer = new byte[505];
+        private int backchannelBufferOffset = 0;
+        private V380SpeakClient speakClient = null;
 
         // RTP state
         private ushort videoSeq, audioSeq;
@@ -44,34 +49,127 @@ namespace V380Decoder.src
             alive = false;
             playing = false;
             try { tcp.Close(); } catch { }
+            try { speakClient?.Dispose(); } catch { }
             OnClose?.Invoke();
         }
 
         // ── RTSP request reader ──────────────────────────────────
         void ReadLoop()
         {
-            var sb = new StringBuilder();
-            var buf = new byte[4096];
             try
             {
                 while (alive)
                 {
-                    int n = ns.Read(buf, 0, buf.Length);
-                    if (n <= 0) break;
-                    sb.Append(Encoding.ASCII.GetString(buf, 0, n));
-                    string raw = sb.ToString();
-                    int end;
-                    while ((end = raw.IndexOf("\r\n\r\n", StringComparison.Ordinal)) >= 0)
+                    int b = ns.ReadByte();
+                    if (b == -1) break;
+
+                    if (b == 0x24) // '$'
                     {
-                        string req = raw[..(end + 4)];
-                        raw = raw[(end + 4)..];
-                        HandleRequest(req);
+                        int ch = ns.ReadByte();
+                        if (ch == -1) break;
+
+                        int len1 = ns.ReadByte();
+                        int len2 = ns.ReadByte();
+                        if (len1 == -1 || len2 == -1) break;
+                        int len = (len1 << 8) | len2;
+
+                        byte[] rtpBuf = new byte[len];
+                        int readTot = 0;
+                        while (readTot < len)
+                        {
+                            int r = ns.Read(rtpBuf, readTot, len - readTot);
+                            if (r <= 0) break;
+                            readTot += r;
+                        }
+                        if (readTot < len) break;
+
+                        if (ch == backchannelCh && len > 12)
+                        {
+                            HandleBackchannelRtp(rtpBuf);
+                        }
                     }
-                    sb.Clear(); sb.Append(raw);
+                    else
+                    {
+                        var reqBytes = new List<byte> { (byte)b };
+                        while (alive)
+                        {
+                            int nextByte = ns.ReadByte();
+                            if (nextByte == -1) break;
+                            reqBytes.Add((byte)nextByte);
+                            if (reqBytes.Count >= 4 &&
+                                reqBytes[reqBytes.Count - 4] == 0x0D &&
+                                reqBytes[reqBytes.Count - 3] == 0x0A &&
+                                reqBytes[reqBytes.Count - 2] == 0x0D &&
+                                reqBytes[reqBytes.Count - 1] == 0x0A)
+                            {
+                                break;
+                            }
+                        }
+                        string reqStr = Encoding.ASCII.GetString(reqBytes.ToArray());
+                        HandleRequest(reqStr);
+                    }
                 }
             }
             catch { }
             finally { Close(); }
+        }
+
+        private void HandleBackchannelRtp(byte[] rtp)
+        {
+            int payloadOffset = 12;
+            int cc = rtp[0] & 0x0F;
+            payloadOffset += cc * 4;
+
+            bool hasExtension = (rtp[0] & 0x10) != 0;
+            if (hasExtension && rtp.Length >= payloadOffset + 4)
+            {
+                int extLen = (rtp[payloadOffset + 2] << 8) | rtp[payloadOffset + 3];
+                payloadOffset += 4 + extLen * 4;
+            }
+
+            if (payloadOffset >= rtp.Length) return;
+
+            int payloadLen = rtp.Length - payloadOffset;
+            byte[] pcmaData = new byte[payloadLen];
+            Array.Copy(rtp, payloadOffset, pcmaData, 0, payloadLen);
+
+            FeedToSpeakClient(pcmaData);
+        }
+
+        private void FeedToSpeakClient(byte[] data)
+        {
+            if (speakClient == null)
+            {
+                var v380Client = server.Client;
+                speakClient = new V380SpeakClient(
+                    v380Client.GetDeviceIdUint(),
+                    v380Client.GetUsername(),
+                    v380Client.GetPassword(),
+                    v380Client.GetIp(),
+                    v380Client.GetPort()
+                );
+                if (!speakClient.Connect())
+                {
+                    Console.Error.WriteLine("[RTSP] Failed to connect Speak client");
+                    speakClient = null;
+                    return;
+                }
+            }
+
+            int srcOffset = 0;
+            while (srcOffset < data.Length)
+            {
+                int toCopy = Math.Min(data.Length - srcOffset, 505 - backchannelBufferOffset);
+                Array.Copy(data, srcOffset, backchannelBuffer, backchannelBufferOffset, toCopy);
+                backchannelBufferOffset += toCopy;
+                srcOffset += toCopy;
+
+                if (backchannelBufferOffset == 505)
+                {
+                    speakClient.SendAudioFrame(backchannelBuffer);
+                    backchannelBufferOffset = 0;
+                }
+            }
         }
 
         // ── Authentication ──────────────────────────────────
@@ -146,11 +244,21 @@ namespace V380Decoder.src
                 case "SETUP":
                     {
                         bool isAudio = url.Contains("trackID=1");
-                        // Parse interleaved channels from client Transport header
-                        // e.g. Transport: RTP/AVP/TCP;unicast;interleaved=0-1
-                        byte ch = (byte)(isAudio ? 2 : 0);
+                        bool isBackchannel = url.Contains("trackID=2");
+                        
+                        byte ch;
+                        if (isBackchannel) ch = 4;
+                        else if (isAudio) ch = 2;
+                        else ch = 0;
+
                         var m = System.Text.RegularExpressions.Regex.Match(transport, @"interleaved=(\d+)-(\d+)");
                         if (m.Success) ch = byte.Parse(m.Groups[1].Value);
+
+                        if (isBackchannel)
+                        {
+                            backchannelCh = ch;
+                            Console.Error.WriteLine($"[RTSP#{id}] negotiated backchannel interleaved channel: {backchannelCh}");
+                        }
 
                         Reply(cseq,
                             $"Transport: RTP/AVP/TCP;unicast;interleaved={ch}-{ch + 1}",

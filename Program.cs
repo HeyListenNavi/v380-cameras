@@ -99,7 +99,8 @@ if (args.Length > 0)
             rtspPort,
             secure,
             username,
-            password);
+            password,
+            client);
         rtsp.Start();
 
         webServer = new(

@@ -166,6 +166,38 @@ namespace V380Decoder.src
                 api.MapPost("/api/image/auto", () => { client.ImageAuto(); LogUtils.debug("[API] Image Auto"); Results.Ok(); });
                 api.MapPost("/api/image/flip", () => { client.ImageFlip(); LogUtils.debug("[API] Image Flip"); Results.Ok(); });
 
+                api.MapPost("/api/speak", async (HttpRequest request) =>
+                {
+                    using var speakClient = new V380SpeakClient(client.GetDeviceIdUint(), client.GetUsername(), client.GetPassword(), client.GetIp(), client.GetPort());
+                    if (!speakClient.Connect())
+                    {
+                        return Results.Problem("Failed to connect to camera speaker");
+                    }
+
+                    byte[] buffer = new byte[505];
+                    int offset = 0;
+                    try
+                    {
+                        while (true)
+                        {
+                            int read = await request.Body.ReadAsync(buffer, offset, buffer.Length - offset);
+                            if (read <= 0) break;
+                            offset += read;
+                            if (offset == 505)
+                            {
+                                speakClient.SendAudioFrame(buffer);
+                                offset = 0;
+                                await Task.Delay(63);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtils.debug($"[API] Speak error: {ex.Message}");
+                    }
+                    return Results.Ok();
+                });
+
                 api.MapGet("/api/status", () => Results.Ok(new StatusResponse
                 {
                     status = "running",

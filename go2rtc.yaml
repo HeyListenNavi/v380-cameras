@@ -1,0 +1,5 @@
+rtsp:
+  listen: ":8558"
+
+streams:
+  yonke: rtsp://127.0.0.1:8554/live#backchannel=1

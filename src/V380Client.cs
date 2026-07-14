@@ -656,6 +656,31 @@ namespace V380Decoder.src
             return deviceId.ToString();
         }
 
+        public uint GetDeviceIdUint()
+        {
+            return deviceId;
+        }
+
+        public string GetUsername()
+        {
+            return username;
+        }
+
+        public string GetPassword()
+        {
+            return password;
+        }
+
+        public string GetIp()
+        {
+            return ip;
+        }
+
+        public int GetPort()
+        {
+            return port;
+        }
+
         public string GetDeviceVersion()
         {
             return deviceVersion.ToString();

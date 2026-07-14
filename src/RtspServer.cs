@@ -21,15 +21,18 @@ namespace V380Decoder.src
         // SPS/PPS from first keyframe – used for SDP fmtp line
         private byte[] cachedSps, cachedPps;
         private readonly object sdpLock = new();
+        private readonly V380Client client;
 
-        public RtspServer(int port, bool secure, string username, string password)
+        public RtspServer(int port, bool secure, string username, string password, V380Client client)
         {
             this.port = port;
             this.username = username;
             this.password = password;
             this.secure = secure;
+            this.client = client;
         }
 
+        public V380Client Client => client;
         public bool IsSecure => secure;
         public string Username => username;
         public string Password => password;
@@ -154,7 +157,11 @@ namespace V380Decoder.src
                 "a=control:trackID=0\r\n" +
                 "m=audio 0 RTP/AVP 8\r\n" +
                 "a=rtpmap:8 PCMA/8000/1\r\n" +
-                "a=control:trackID=1\r\n";
+                "a=control:trackID=1\r\n" +
+                "m=audio 0 RTP/AVP 8\r\n" +
+                "a=rtpmap:8 PCMA/8000/1\r\n" +
+                "a=control:trackID=2\r\n" +
+                "a=sendonly\r\n";
         }
 
         public void Dispose()
