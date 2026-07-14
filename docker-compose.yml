@@ -1,0 +1,45 @@
+services:
+  # Patio Camera
+  patio:
+    build: .
+    restart: unless-stopped
+    entrypoint: /bin/sh
+    command: -c "./V380Decoder --id $PATIO_ID --username $PATIO_USER --password $PATIO_PASS --ip $PATIO_IP --enable-api"
+    environment:
+      - PATIO_ID=${PATIO_ID}
+      - PATIO_USER=${PATIO_USER}
+      - PATIO_PASS=${PATIO_PASS}
+      - PATIO_IP=${PATIO_IP}
+    ports:
+      - "8554:8554"
+      - "8080:8080"
+
+  # Yonke Camera
+  yonke:
+    build: .
+    restart: unless-stopped
+    entrypoint: /bin/sh
+    command: -c "./V380Decoder --id $YONKE_ID --username $YONKE_USER --password $YONKE_PASS --ip $YONKE_IP --enable-api"
+    environment:
+      - YONKE_ID=${YONKE_ID}
+      - YONKE_USER=${YONKE_USER}
+      - YONKE_PASS=${YONKE_PASS}
+      - YONKE_IP=${YONKE_IP}
+    ports:
+      - "8555:8554"
+      - "8081:8080"
+
+  # Frente Camera
+  frente:
+    build: .
+    restart: unless-stopped
+    entrypoint: /bin/sh
+    command: -c "./V380Decoder --id $FRENTE_ID --username $FRENTE_USER --password $FRENTE_PASS --ip $FRENTE_IP --enable-api"
+    environment:
+      - FRENTE_ID=${FRENTE_ID}
+      - FRENTE_USER=${FRENTE_USER}
+      - FRENTE_PASS=${FRENTE_PASS}
+      - FRENTE_IP=${FRENTE_IP}
+    ports:
+      - "8556:8554"
+      - "8082:8080"
